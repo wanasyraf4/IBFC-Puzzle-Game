@@ -1,5 +1,4 @@
-
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Tile } from './types';
 import { GRID_SIZE, TILE_COUNT, EMPTY_TILE_ID, IMAGE_URL, SHUFFLE_MOVES_COUNT } from './constants';
 import PuzzleBoard from './components/PuzzleBoard';
@@ -9,7 +8,39 @@ const App: React.FC = () => {
   const [tiles, setTiles] = useState<Tile[]>([]);
   const [isSolved, setIsSolved] = useState(true);
   const [isBusy, setIsBusy] = useState(false);
+  const [isSolving, setIsSolving] = useState(false);
+  const [isAutoShuffling, setIsAutoShuffling] = useState(false);
   const [imageLoaded, setImageLoaded] = useState(false);
+  const [boardSize, setBoardSize] = useState({ width: 800, height: 450 });
+
+  useEffect(() => {
+    const calculateBoardSize = () => {
+      const mainPadding = 32; // Corresponds to p-4 on the main container
+      const buttonsHeight = 80; // Approximate height for the buttons area and its margin
+      
+      const availableWidth = window.innerWidth - mainPadding;
+      const availableHeight = window.innerHeight - buttonsHeight;
+
+      const aspectRatio = 16 / 9;
+      let newWidth, newHeight;
+
+      if (availableWidth / availableHeight > aspectRatio) {
+        // Height is the limiting factor
+        newHeight = availableHeight;
+        newWidth = newHeight * aspectRatio;
+      } else {
+        // Width is the limiting factor
+        newWidth = availableWidth;
+        newHeight = newWidth / aspectRatio;
+      }
+      
+      setBoardSize({ width: newWidth, height: newHeight });
+    };
+
+    calculateBoardSize();
+    window.addEventListener('resize', calculateBoardSize);
+    return () => window.removeEventListener('resize', calculateBoardSize);
+  }, []);
 
   const createSolvedGrid = useCallback(() => {
     const initialTiles: Tile[] = [];
@@ -61,6 +92,7 @@ const App: React.FC = () => {
       setTiles(newTiles);
       if (checkSolved(newTiles)) {
         setIsSolved(true);
+        setIsAutoShuffling(false); // Stop auto-shuffling on solve
       }
     }
   }, [tiles, isBusy, isSolved, checkSolved]);
@@ -69,11 +101,17 @@ const App: React.FC = () => {
       setIsBusy(true);
       setIsSolved(false);
 
-      let currentTiles = createSolvedGrid();
+      let currentTiles = [...tiles];
       
       const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
-      let emptyIndex = EMPTY_TILE_ID;
+      let emptyIndex = currentTiles.findIndex(t => t.isEmpty);
+      if (emptyIndex === -1) {
+          console.error("Empty tile not found, resetting puzzle.");
+          currentTiles = createSolvedGrid();
+          emptyIndex = EMPTY_TILE_ID;
+      }
+      
       for (let i = 0; i < SHUFFLE_MOVES_COUNT; i++) {
         const neighbors: number[] = [];
         const { row, col } = { row: Math.floor(emptyIndex / GRID_SIZE), col: emptyIndex % GRID_SIZE };
@@ -88,52 +126,63 @@ const App: React.FC = () => {
         
         [currentTiles[emptyIndex], currentTiles[tileToMoveIndex]] = [currentTiles[tileToMoveIndex], currentTiles[emptyIndex]];
         emptyIndex = tileToMoveIndex;
-
-        if (i % 20 === 0) { // Update UI periodically
-            setTiles([...currentTiles]);
-            await sleep(10);
-        }
+        
+        setTiles([...currentTiles]);
+        await sleep(5);
       }
-      setTiles(currentTiles);
       setIsBusy(false);
-  }, [createSolvedGrid]);
+  }, [tiles, createSolvedGrid]);
+
+  const shuffleRef = useRef(shuffle);
+  useEffect(() => {
+    shuffleRef.current = shuffle;
+  });
+
+  useEffect(() => {
+    if (tiles.length === 0 || !isAutoShuffling) {
+      return;
+    }
+
+    let timeoutId: number;
+    let isStillAutoShuffling = true;
+
+    const shuffleLoop = async () => {
+      await shuffleRef.current();
+      if (isStillAutoShuffling) {
+        // Continuous shuffle with no delay, yielding to event loop
+        timeoutId = setTimeout(shuffleLoop, 0);
+      }
+    };
+
+    shuffleLoop();
+
+    return () => {
+      isStillAutoShuffling = false;
+      clearTimeout(timeoutId);
+    };
+  }, [isAutoShuffling, tiles.length]);
 
   const solve = useCallback(async () => {
+      setIsAutoShuffling(false);
       setIsBusy(true);
+      setIsSolving(true);
       const solvedGrid = createSolvedGrid();
-      
-      const currentTilePositions: { [key: number]: number } = {};
-      tiles.forEach((tile, index) => {
-          currentTilePositions[tile.id] = index;
-      });
-
-      // Create a version of the solved grid that can be mutated for animation
-      let animatingTiles = [...tiles];
-      
-      const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
-
-      for (const solvedTile of solvedGrid) {
-          const currentPos = currentTilePositions[solvedTile.id];
-          const correctPos = solvedTile.originalIndex;
-          
-          if (currentPos !== correctPos) {
-              const tileToSwapWith = animatingTiles[correctPos];
-              
-              // Swap in the animating array
-              [animatingTiles[currentPos], animatingTiles[correctPos]] = [animatingTiles[correctPos], animatingTiles[currentPos]];
-              
-              // Update positions map for next iteration
-              currentTilePositions[solvedTile.id] = correctPos;
-              currentTilePositions[tileToSwapWith.id] = currentPos;
-          }
-      }
-
       setTiles(solvedGrid);
       
-      await sleep(500);
+      const animationTime = TILE_COUNT * 20 + 1000; 
+      await new Promise(resolve => setTimeout(resolve, animationTime));
+
       setIsSolved(true);
       setIsBusy(false);
-  }, [createSolvedGrid, tiles]);
+      setIsSolving(false);
+  }, [createSolvedGrid]);
+
+  const handlePlayAgain = useCallback(() => {
+    const solvedGrid = createSolvedGrid();
+    setTiles(solvedGrid);
+    setIsSolved(false);
+    setIsAutoShuffling(true);
+  }, [createSolvedGrid]);
 
   if (!imageLoaded) {
       return (
@@ -147,15 +196,25 @@ const App: React.FC = () => {
   }
 
   return (
-    <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center p-4 selection:bg-cyan-500 selection:text-cyan-900">
-      <div className="relative">
-        <PuzzleBoard tiles={tiles} onTileClick={handleTileClick} isSolved={isSolved} />
-        {isSolved && (
+    <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center p-4 selection:bg-cyan-500 selection:text-cyan-900 overflow-hidden">
+      <div 
+        className="relative"
+        style={{ width: boardSize.width, height: boardSize.height }}
+      >
+        <PuzzleBoard 
+            tiles={tiles} 
+            onTileClick={handleTileClick} 
+            isSolved={isSolved} 
+            isSolving={isSolving}
+            width={boardSize.width}
+            height={boardSize.height}
+        />
+        {isSolved && !isSolving && (
             <div className="absolute inset-0 bg-black/70 backdrop-blur-sm flex flex-col items-center justify-center rounded-lg animate-fade-in">
                 <CheckCircleIcon className="w-20 h-20 text-green-400" />
                 <h2 className="text-4xl font-bold mt-4 text-white">Puzzle Solved!</h2>
                 <button
-                    onClick={shuffle}
+                    onClick={handlePlayAgain}
                     className="mt-6 flex items-center gap-2 px-6 py-3 bg-green-500 text-white font-semibold rounded-md shadow-lg hover:bg-green-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-slate-900 focus:ring-green-500 transition-all duration-300"
                 >
                     <ShuffleIcon className="w-5 h-5"/>
@@ -167,17 +226,17 @@ const App: React.FC = () => {
 
       <div className="flex space-x-4 mt-6">
         <button
-          onClick={shuffle}
-          disabled={isBusy}
-          className="flex items-center gap-2 w-36 justify-center px-5 py-3 bg-cyan-600 text-white font-semibold rounded-md shadow-lg hover:bg-cyan-700 disabled:bg-slate-600 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-slate-900 focus:ring-cyan-500 transition-all duration-300"
+          onClick={() => setIsAutoShuffling(prev => !prev)}
+          disabled={isBusy && !isAutoShuffling}
+          className="flex items-center gap-2 w-40 justify-center px-5 py-3 bg-cyan-600 text-white font-semibold rounded-md shadow-lg hover:bg-cyan-700 disabled:bg-slate-600 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-slate-900 focus:ring-cyan-500 transition-all duration-300"
         >
           <ShuffleIcon className="w-5 h-5"/>
-          Shuffle
+          {isAutoShuffling ? 'Stop Shuffling' : 'Auto-Shuffle'}
         </button>
         <button
           onClick={solve}
-          disabled={isBusy || isSolved}
-          className="flex items-center gap-2 w-36 justify-center px-5 py-3 bg-teal-600 text-white font-semibold rounded-md shadow-lg hover:bg-teal-700 disabled:bg-slate-600 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-slate-900 focus:ring-teal-500 transition-all duration-300"
+          disabled={isBusy || isSolved || isAutoShuffling}
+          className="flex items-center gap-2 w-40 justify-center px-5 py-3 bg-teal-600 text-white font-semibold rounded-md shadow-lg hover:bg-teal-700 disabled:bg-slate-600 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-slate-900 focus:ring-teal-500 transition-all duration-300"
         >
           <PuzzleIcon className="w-5 h-5"/>
           Auto-Solve

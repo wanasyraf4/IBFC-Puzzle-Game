@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { Tile as TileType } from '../types';
 import { GRID_SIZE, IMAGE_URL } from '../constants';
@@ -8,18 +7,26 @@ interface PuzzleBoardProps {
   tiles: TileType[];
   onTileClick: (tile: TileType) => void;
   isSolved: boolean;
+  isSolving: boolean;
+  width: number;
+  height: number;
 }
 
-const PuzzleBoard: React.FC<PuzzleBoardProps> = ({ tiles, onTileClick, isSolved }) => {
-  const boardSize = 600; // You can adjust this size
-  const tileSize = boardSize / GRID_SIZE;
+const PuzzleBoard: React.FC<PuzzleBoardProps> = ({ tiles, onTileClick, isSolved, isSolving, width, height }) => {
+  // Assuming 1rem = 16px, p-2 is 0.5rem = 8px. Total padding is 16px.
+  const boardPadding = 16;
+  const gridWidth = width - boardPadding;
+  const gridHeight = height - boardPadding;
+  
+  const tileWidth = gridWidth / GRID_SIZE;
+  const tileHeight = gridHeight / GRID_SIZE;
 
   return (
     <div 
       className="relative bg-slate-800 p-2 rounded-lg shadow-2xl shadow-cyan-500/10"
       style={{ 
-        width: boardSize, 
-        height: boardSize 
+        width: width, 
+        height: height 
       }}
     >
       <div 
@@ -31,10 +38,14 @@ const PuzzleBoard: React.FC<PuzzleBoardProps> = ({ tiles, onTileClick, isSolved 
             tile={tile}
             index={index}
             onClick={onTileClick}
-            tileSize={tileSize}
+            tileWidth={tileWidth}
+            tileHeight={tileHeight}
+            gridWidth={gridWidth}
+            gridHeight={gridHeight}
             gridSize={GRID_SIZE}
             imageUrl={IMAGE_URL}
             isSolved={isSolved}
+            isSolving={isSolving}
           />
         ))}
       </div>

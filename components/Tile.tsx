@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { Tile as TileType } from '../types';
 
@@ -6,30 +5,35 @@ interface TileProps {
   tile: TileType;
   index: number;
   onClick: (tile: TileType) => void;
-  tileSize: number;
+  tileWidth: number;
+  tileHeight: number;
+  gridWidth: number;
+  gridHeight: number;
   gridSize: number;
   imageUrl: string;
   isSolved: boolean;
+  isSolving: boolean;
 }
 
-const Tile: React.FC<TileProps> = ({ tile, index, onClick, tileSize, gridSize, imageUrl, isSolved }) => {
+const Tile: React.FC<TileProps> = ({ tile, index, onClick, tileWidth, tileHeight, gridWidth, gridHeight, gridSize, imageUrl, isSolved, isSolving }) => {
   const { originalIndex, isEmpty } = tile;
 
-  const top = Math.floor(index / gridSize) * tileSize;
-  const left = (index % gridSize) * tileSize;
+  const top = Math.floor(index / gridSize) * tileHeight;
+  const left = (index % gridSize) * tileWidth;
 
-  const bgPosX = (originalIndex % gridSize) * tileSize;
-  const bgPosY = Math.floor(originalIndex / gridSize) * tileSize;
+  const bgPosX = (originalIndex % gridSize) * tileWidth;
+  const bgPosY = Math.floor(originalIndex / gridSize) * tileHeight;
 
   const tileStyle: React.CSSProperties = {
     position: 'absolute',
-    width: `${tileSize}px`,
-    height: `${tileSize}px`,
+    width: `${tileWidth}px`,
+    height: `${tileHeight}px`,
     transform: `translate3d(${left}px, ${top}px, 0)`,
     backgroundImage: isEmpty ? 'none' : `url(${imageUrl})`,
-    backgroundSize: `${tileSize * gridSize}px ${tileSize * gridSize}px`,
+    backgroundSize: `${gridWidth}px ${gridHeight}px`,
     backgroundPosition: `-${bgPosX}px -${bgPosY}px`,
-    transition: 'transform 0.3s ease-in-out',
+    transition: 'transform 0.6s cubic-bezier(0.4, 0, 0.2, 1)',
+    transitionDelay: isSolving ? `${originalIndex * 20}ms` : '0s',
     boxShadow: isEmpty ? 'none' : 'inset 0 0 1px rgba(255, 255, 255, 0.2)',
     backgroundColor: isEmpty ? 'transparent' : '#1e293b' // bg-slate-800
   };
