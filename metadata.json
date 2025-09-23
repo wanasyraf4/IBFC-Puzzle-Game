@@ -1,0 +1,5 @@
+{
+  "name": "8x8 Image Puzzle",
+  "description": "A challenging 8x8 sliding puzzle game featuring a beautiful image. Players can shuffle the puzzle and try to solve it by moving the tiles. An auto-solve feature is included to demonstrate the solution.",
+  "requestFramePermissions": []
+}
