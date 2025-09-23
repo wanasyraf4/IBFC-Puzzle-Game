@@ -32,9 +32,8 @@ const Tile: React.FC<TileProps> = ({ tile, index, onClick, tileWidth, tileHeight
     backgroundImage: isEmpty ? 'none' : `url(${imageUrl})`,
     backgroundSize: `${gridWidth}px ${gridHeight}px`,
     backgroundPosition: `-${bgPosX}px -${bgPosY}px`,
-    transition: 'transform 0.6s cubic-bezier(0.4, 0, 0.2, 1)',
+    transition: 'transform 0.1s cubic-bezier(0.4, 0, 0.2, 1)',
     transitionDelay: isSolving ? `${originalIndex * 20}ms` : '0s',
-    boxShadow: isEmpty ? 'none' : 'inset 0 0 1px rgba(255, 255, 255, 0.2)',
     backgroundColor: isEmpty ? 'transparent' : '#1e293b' // bg-slate-800
   };
 
