@@ -148,13 +148,6 @@ const App: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center p-4 selection:bg-cyan-500 selection:text-cyan-900">
-      <div className="text-center mb-6">
-        <h1 className="text-4xl sm:text-5xl font-bold tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-teal-500">
-          8x8 Image Puzzle
-        </h1>
-        <p className="text-slate-400 mt-2">Slide the tiles to solve the picture.</p>
-      </div>
-
       <div className="relative">
         <PuzzleBoard tiles={tiles} onTileClick={handleTileClick} isSolved={isSolved} />
         {isSolved && (
