@@ -13,9 +13,10 @@ interface TileProps {
   imageUrl: string;
   isSolved: boolean;
   isSolving: boolean;
+  isCompleted: boolean;
 }
 
-const Tile: React.FC<TileProps> = ({ tile, index, onClick, tileWidth, tileHeight, gridWidth, gridHeight, gridSize, imageUrl, isSolved, isSolving }) => {
+const Tile: React.FC<TileProps> = ({ tile, index, onClick, tileWidth, tileHeight, gridWidth, gridHeight, gridSize, imageUrl, isSolved, isSolving, isCompleted }) => {
   const { originalIndex, isEmpty } = tile;
 
   const top = Math.floor(index / gridSize) * tileHeight;
@@ -34,7 +35,7 @@ const Tile: React.FC<TileProps> = ({ tile, index, onClick, tileWidth, tileHeight
     backgroundPosition: `-${bgPosX}px -${bgPosY}px`,
     transition: 'transform 0.1s cubic-bezier(0.4, 0, 0.2, 1)',
     transitionDelay: isSolving ? `${originalIndex * 20}ms` : '0s',
-    backgroundColor: isEmpty ? 'transparent' : '#1e293b' // bg-slate-800
+    backgroundColor: 'transparent'
   };
 
   const handleClick = () => {
@@ -48,9 +49,8 @@ const Tile: React.FC<TileProps> = ({ tile, index, onClick, tileWidth, tileHeight
       style={tileStyle}
       onClick={handleClick}
       className={`
-        ${canMove ? 'cursor-pointer' : ''}
-        ${canMove && !isSolved ? 'hover:scale-105 hover:z-10' : ''}
-        ${isSolved ? 'border-none' : ''}
+        ${canMove ? 'cursor-pointer hover:scale-105 hover:z-10' : ''}
+        ${isCompleted || isEmpty ? 'border-none shadow-none' : 'border border-slate-900/75 shadow-[inset_0_0_2px_rgba(0,0,0,0.5)]'}
       `}
     />
   );

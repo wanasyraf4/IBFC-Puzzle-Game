@@ -1,36 +1,11 @@
-import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Tile } from './types';
 import { GRID_SIZE, TILE_COUNT, EMPTY_TILE_ID, IMAGE_URL, SHUFFLE_MOVES_COUNT, FINAL_PIECE_URL } from './constants';
 import PuzzleBoard from './components/PuzzleBoard';
+import CompletionEffect from './components/CompletionEffect';
 import { PuzzleIcon, ShuffleIcon } from './components/Icons';
 
 type GameMode = 'sliding' | 'finalPiece' | 'completed';
-
-const CONFETTI_COUNT = 150;
-const COLORS = ['#fde047', '#67e8f9', '#f472b6', '#86efac', '#a78bfa'];
-
-const Confetti: React.FC = () => {
-  const confettiPieces = useMemo(() => {
-    return Array.from({ length: CONFETTI_COUNT }).map((_, i) => {
-      const duration = Math.random() * 3 + 3; // 3 to 6 seconds
-      const delay = Math.random() * 4; // 0 to 4 seconds delay
-      const style: React.CSSProperties = {
-        position: 'absolute',
-        width: `${Math.random() * 10 + 5}px`,
-        height: `${Math.random() * 8 + 5}px`,
-        backgroundColor: COLORS[Math.floor(Math.random() * COLORS.length)],
-        top: '-10%',
-        left: `${Math.random() * 100}%`,
-        animation: `confetti-fall ${duration}s ${delay}s linear forwards`,
-        opacity: 0,
-      };
-      return <div key={i} style={style} className="rounded-sm" />;
-    });
-  }, []);
-
-  return <div className="absolute inset-0 pointer-events-none z-20 overflow-hidden">{confettiPieces}</div>;
-};
-
 
 const App: React.FC = () => {
   const [tiles, setTiles] = useState<Tile[]>([]);
@@ -42,10 +17,15 @@ const App: React.FC = () => {
   const [boardSize, setBoardSize] = useState({ width: 800, height: 450 });
   const [shufflePath, setShufflePath] = useState<[number, number][]>([]);
   
-  // New state for the final piece mini-game
   const [gameMode, setGameMode] = useState<GameMode>('sliding');
   const [isDroppable, setIsDroppable] = useState(false);
   const [isFinalPiecePlaced, setIsFinalPiecePlaced] = useState(false);
+
+  // Touch drag state
+  const [isTouchDragging, setIsTouchDragging] = useState(false);
+  const [touchTranslate, setTouchTranslate] = useState({ x: 0, y: 0 });
+  const touchStartPosRef = useRef({ x: 0, y: 0 });
+  const dropZoneRef = useRef<HTMLDivElement>(null);
 
 
   useEffect(() => {
@@ -258,6 +238,12 @@ const App: React.FC = () => {
     setIsAutoShuffling(prev => !prev);
   }
 
+  const placeFinalPiece = useCallback(() => {
+    setIsDroppable(false);
+    setIsFinalPiecePlaced(true);
+    setTimeout(() => setGameMode('completed'), 1000);
+  }, []);
+
   const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
     if (gameMode === 'finalPiece') setIsDroppable(true);
@@ -266,10 +252,64 @@ const App: React.FC = () => {
   const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
     if (gameMode === 'finalPiece') {
-      setIsDroppable(false);
-      setIsFinalPiecePlaced(true);
-      setTimeout(() => setGameMode('completed'), 1000);
+      placeFinalPiece();
     }
+  };
+  
+  const handleTouchStart = (e: React.TouchEvent<HTMLImageElement>) => {
+      if (gameMode !== 'finalPiece') return;
+      setIsTouchDragging(true);
+      const touch = e.touches[0];
+      touchStartPosRef.current = { 
+          x: touch.clientX - touchTranslate.x, 
+          y: touch.clientY - touchTranslate.y 
+      };
+  };
+  
+  const handleTouchMove = (e: React.TouchEvent<HTMLImageElement>) => {
+    if (gameMode !== 'finalPiece' || !dropZoneRef.current || !isTouchDragging) return;
+    
+    e.preventDefault();
+    
+    const touch = e.touches[0];
+    
+    setTouchTranslate({
+        x: touch.clientX - touchStartPosRef.current.x,
+        y: touch.clientY - touchStartPosRef.current.y,
+    });
+
+    const dropZoneRect = dropZoneRef.current.getBoundingClientRect();
+    const isOver = (
+        touch.clientX >= dropZoneRect.left &&
+        touch.clientX <= dropZoneRect.right &&
+        touch.clientY >= dropZoneRect.top &&
+        touch.clientY <= dropZoneRect.bottom
+    );
+    
+    setIsDroppable(isOver);
+  };
+
+  const handleTouchEnd = (e: React.TouchEvent<HTMLImageElement>) => {
+      if (gameMode !== 'finalPiece' || !dropZoneRef.current || !isTouchDragging) return;
+      
+      setIsTouchDragging(false);
+      
+      const touch = e.changedTouches[0];
+      const dropZoneRect = dropZoneRef.current.getBoundingClientRect();
+      
+      const isOver = (
+          touch.clientX >= dropZoneRect.left &&
+          touch.clientX <= dropZoneRect.right &&
+          touch.clientY >= dropZoneRect.top &&
+          touch.clientY <= dropZoneRect.bottom
+      );
+      
+      if (isOver) {
+          placeFinalPiece();
+      } else {
+          setIsDroppable(false);
+          setTouchTranslate({ x: 0, y: 0 }); // Snap back
+      }
   };
 
   const boardPadding = 16;
@@ -277,13 +317,20 @@ const App: React.FC = () => {
   const gridHeight = boardSize.height - boardPadding;
   const tileWidth = gridWidth / GRID_SIZE;
   const tileHeight = gridHeight / GRID_SIZE;
-  // const dropZoneSize = { width: tileWidth * 2, height: tileHeight * 2 };
-  // Example of how to change it to a fixed size
-  const dropZoneSize = { width: 343, height: 126 };
+  // const dropZoneSize = { width: 343, height: 126 };
+  // dynamic puzzle slot size (relative to board size)
+  const dropZoneSize = {
+    width:  gridWidth  * 0.2766225583,
+    height: gridHeight * 0.1799807507,
+  };
+  // const dropZonePosition = {
+  //     top: (GRID_SIZE / 2 - 1) * tileHeight + boardPadding / 2 - 69,
+  //     left: (GRID_SIZE / 2 - 1) * tileWidth + boardPadding / 2 - 84,
+  // };
+  // dynamic drop zone 
   const dropZonePosition = {
-      // top: (GRID_SIZE / 2 - 1) * tileHeight + boardPadding / 2,
-      top: (GRID_SIZE / 2 - 1) * tileHeight + boardPadding / 2 - 69,
-      left: (GRID_SIZE / 2 - 1) * tileWidth + boardPadding / 2 - 84,
+  left: boardPadding / 2 + gridWidth  * 0.3698802773,
+  top:  boardPadding / 2 + gridHeight * 0.3407122233,
   };
 
   if (!imageLoaded) {
@@ -297,6 +344,8 @@ const App: React.FC = () => {
       )
   }
 
+  const isCompleted = gameMode === 'completed';
+
   return (
     <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center p-4 selection:bg-cyan-500 selection:text-cyan-900 overflow-hidden">
       <div 
@@ -308,12 +357,14 @@ const App: React.FC = () => {
             onTileClick={handleTileClick} 
             isSolved={isSolved} 
             isSolving={isSolving}
+            isCompleted={isCompleted}
             width={boardSize.width}
             height={boardSize.height}
         />
         
         {gameMode === 'finalPiece' && !isFinalPiecePlaced && (
           <div
+            ref={dropZoneRef}
             onDragOver={handleDragOver}
             onDragLeave={handleDragLeave}
             onDrop={handleDrop}
@@ -337,7 +388,7 @@ const App: React.FC = () => {
             />
         )}
         
-        {gameMode === 'completed' && <Confetti />}
+        {gameMode === 'completed' && <CompletionEffect />}
       </div>
 
       <div className="mt-6 flex flex-col justify-center items-center" style={{ height: '120px' }}>
@@ -363,14 +414,21 @@ const App: React.FC = () => {
         )}
 
         {gameMode === 'finalPiece' && !isFinalPiecePlaced && (
-          <div className="text-center animate-fade-in">
+          <div className="text-center animate-fade-in touch-none" style={{ touchAction: 'none' }}>
               <p className="mb-4 text-lg text-slate-300">Place the final piece to complete the puzzle.</p>
               <img
                 src={FINAL_PIECE_URL}
                 draggable="true"
                 onDragStart={(e) => e.dataTransfer.setData('text/plain', 'piece')}
-                // className="w-60 h-30 mx-auto cursor-grab active:cursor-grabbing drop-shadow-[0_5px_15px_rgba(0,255,255,0.3)] hover:scale-110 transition-transform"
-                className="w-[343px] h-[126px] mx-auto cursor-grab active:cursor-grabbing drop-shadow-[0_5px_15px_rgba(0,255,255,0.3)] hover:scale-110 transition-transform"
+                onTouchStart={handleTouchStart}
+                onTouchMove={handleTouchMove}
+                onTouchEnd={handleTouchEnd}
+                style={{
+                  transform: `translate(${touchTranslate.x}px, ${touchTranslate.y}px) scale(${isTouchDragging ? 1.1 : 1})`,
+                  zIndex: isTouchDragging ? 1000 : 'auto',
+                  transition: isTouchDragging ? 'none' : 'transform 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
+                }}
+                className={`w-[343px] h-[126px] mx-auto cursor-grab active:cursor-grabbing ${isTouchDragging ? 'drop-shadow-[0_10px_25px_rgba(0,255,255,0.5)]' : 'drop-shadow-[0_5px_15px_rgba(0,255,255,0.3)] hover:scale-110'}`}
                 alt="Draggable puzzle piece"
               />
           </div>
