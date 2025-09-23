@@ -3,6 +3,8 @@ import { Tile } from './types';
 import { GRID_SIZE, TILE_COUNT, EMPTY_TILE_ID, IMAGE_URL, SHUFFLE_MOVES_COUNT, FINAL_PIECE_URL } from './constants';
 import PuzzleBoard from './components/PuzzleBoard';
 import CompletionEffect from './components/CompletionEffect';
+import Countdown from './components/Countdown';
+import VideoPlayer from './components/VideoPlayer';
 import { PuzzleIcon, ShuffleIcon } from './components/Icons';
 
 type GameMode = 'sliding' | 'finalPiece' | 'completed';
@@ -20,6 +22,10 @@ const App: React.FC = () => {
   const [gameMode, setGameMode] = useState<GameMode>('sliding');
   const [isDroppable, setIsDroppable] = useState(false);
   const [isFinalPiecePlaced, setIsFinalPiecePlaced] = useState(false);
+
+  const [showCountdown, setShowCountdown] = useState(false);
+  const [showPlayAgain, setShowPlayAgain] = useState(false);
+  const [showVideo, setShowVideo] = useState(false);
 
   // Touch drag state
   const [isTouchDragging, setIsTouchDragging] = useState(false);
@@ -80,6 +86,17 @@ const App: React.FC = () => {
       }
     };
   }, [createSolvedGrid]);
+
+  useEffect(() => {
+    if (gameMode === 'completed') {
+      // CompletionEffect animation is ~3.5s. Start countdown after.
+      const timer = setTimeout(() => {
+        setShowCountdown(true);
+      }, 3500); 
+
+      return () => clearTimeout(timer);
+    }
+  }, [gameMode]);
 
   const onPuzzleSolved = useCallback(() => {
     setIsSolved(true);
@@ -229,6 +246,9 @@ const App: React.FC = () => {
     setIsAutoShuffling(true);
     setGameMode('sliding');
     setIsFinalPiecePlaced(false);
+    setShowCountdown(false);
+    setShowPlayAgain(false);
+    setShowVideo(false);
   }, [createSolvedGrid]);
 
   const handleToggleAutoShuffle = () => {
@@ -311,26 +331,31 @@ const App: React.FC = () => {
           setTouchTranslate({ x: 0, y: 0 }); // Snap back
       }
   };
+  
+  const handleCountdownComplete = () => {
+    setShowCountdown(false);
+    setShowVideo(true);
+  };
+
+  const handleVideoClose = () => {
+    setShowVideo(false);
+    setShowPlayAgain(true);
+  };
 
   const boardPadding = 16;
   const gridWidth = boardSize.width - boardPadding;
   const gridHeight = boardSize.height - boardPadding;
   const tileWidth = gridWidth / GRID_SIZE;
   const tileHeight = gridHeight / GRID_SIZE;
-  // const dropZoneSize = { width: 343, height: 126 };
   // dynamic puzzle slot size (relative to board size)
   const dropZoneSize = {
     width:  gridWidth  * 0.2766225583,
     height: gridHeight * 0.1799807507,
   };
-  // const dropZonePosition = {
-  //     top: (GRID_SIZE / 2 - 1) * tileHeight + boardPadding / 2 - 69,
-  //     left: (GRID_SIZE / 2 - 1) * tileWidth + boardPadding / 2 - 84,
-  // };
   // dynamic drop zone 
   const dropZonePosition = {
-  left: boardPadding / 2 + gridWidth  * 0.3698802773,
-  top:  boardPadding / 2 + gridHeight * 0.3407122233,
+    left: boardPadding / 2 + gridWidth  * 0.3698802773,
+    top:  boardPadding / 2 + gridHeight * 0.3407122233,
   };
 
   if (!imageLoaded) {
@@ -389,6 +414,7 @@ const App: React.FC = () => {
         )}
         
         {gameMode === 'completed' && <CompletionEffect />}
+        {showCountdown && <Countdown duration={5} onComplete={handleCountdownComplete} />}
       </div>
 
       <div className="mt-6 flex flex-col justify-center items-center" style={{ height: '120px' }}>
@@ -434,11 +460,8 @@ const App: React.FC = () => {
           </div>
         )}
 
-        {gameMode === 'completed' && (
-            <div 
-              className="opacity-0"
-              style={{ animation: 'fade-in 0.5s ease-in-out 3s forwards' }}
-            >
+        {showPlayAgain && (
+            <div className="animate-fade-in">
               <button
                   onClick={handlePlayAgain}
                   className="flex items-center gap-2 px-6 py-3 bg-green-500 text-white font-semibold rounded-md shadow-lg hover:bg-green-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-slate-900 focus:ring-green-500 transition-all duration-300 transform hover:scale-105"
@@ -449,6 +472,7 @@ const App: React.FC = () => {
             </div>
         )}
       </div>
+      {showVideo && <VideoPlayer videoId="U4h2JZ_QOMg" onClose={handleVideoClose} />}
     </div>
   );
 };
