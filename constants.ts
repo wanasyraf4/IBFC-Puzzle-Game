@@ -4,3 +4,6 @@ export const EMPTY_TILE_ID = TILE_COUNT - 1;
 export const SHUFFLE_MOVES_COUNT = 500;
 export const IMAGE_URL = 'https://i.ibb.co/LX5zN4ZZ/background1.png';
 export const FINAL_PIECE_URL = 'https://i.ibb.co/Myrc0nSw/puzzle-piece1.png';
+export const FINAL_PIECE_SNAP_SOUND_URL = 'https://www.myinstants.com/media/sounds/steam-achievement.mp3';
+// export const PUZZLE_COMPLETED_SOUND_URL = 'https://www.myinstants.com/media/sounds/minecraft-challenge-completed.mp3';
+export const PUZZLE_COMPLETED_SOUND_URL = 'https://www.myinstants.com/media/sounds/minecraft-challenge-completed.mp3';

@@ -33,7 +33,7 @@ const CompletionEffect: React.FC = () => {
               textShadow: '0 0 5px #0ff, 0 0 10px #0ff, 0 0 20px #0ff',
               animation: 'text-glitch 3.5s ease-in-out 0.5s forwards'
             }}>
-        PUZZLE COMPLETE
+        
       </h2>
     </div>
   );

@@ -1,10 +1,8 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Tile } from './types';
-import { GRID_SIZE, TILE_COUNT, EMPTY_TILE_ID, IMAGE_URL, SHUFFLE_MOVES_COUNT, FINAL_PIECE_URL } from './constants';
+import { GRID_SIZE, TILE_COUNT, EMPTY_TILE_ID, IMAGE_URL, FINAL_PIECE_URL, FINAL_PIECE_SNAP_SOUND_URL, PUZZLE_COMPLETED_SOUND_URL } from './constants';
 import PuzzleBoard from './components/PuzzleBoard';
 import CompletionEffect from './components/CompletionEffect';
-import Countdown from './components/Countdown';
-import VideoPlayer from './components/VideoPlayer';
 import { PuzzleIcon, ShuffleIcon } from './components/Icons';
 
 type GameMode = 'sliding' | 'finalPiece' | 'completed';
@@ -14,34 +12,34 @@ const App: React.FC = () => {
   const [isSolved, setIsSolved] = useState(false);
   const [isBusy, setIsBusy] = useState(false);
   const [isSolving, setIsSolving] = useState(false);
-  const [isAutoShuffling, setIsAutoShuffling] = useState(true);
   const [imageLoaded, setImageLoaded] = useState(false);
   const [boardSize, setBoardSize] = useState({ width: 800, height: 450 });
-  const [shufflePath, setShufflePath] = useState<[number, number][]>([]);
   
   const [gameMode, setGameMode] = useState<GameMode>('sliding');
   const [isDroppable, setIsDroppable] = useState(false);
   const [isFinalPiecePlaced, setIsFinalPiecePlaced] = useState(false);
 
-  const [showCountdown, setShowCountdown] = useState(false);
   const [showPlayAgain, setShowPlayAgain] = useState(false);
-  const [showVideo, setShowVideo] = useState(false);
 
   // Touch drag state
   const [isTouchDragging, setIsTouchDragging] = useState(false);
   const [touchTranslate, setTouchTranslate] = useState({ x: 0, y: 0 });
   const touchStartPosRef = useRef({ x: 0, y: 0 });
   const dropZoneRef = useRef<HTMLDivElement>(null);
+  const finalPieceSnapAudioRef = useRef<HTMLAudioElement | null>(null);
+  const puzzleCompletedAudioRef = useRef<HTMLAudioElement | null>(null);
+  const timersRef = useRef<number[]>([]);
+  const isMounted = useRef(true);
 
 
   useEffect(() => {
     const calculateBoardSize = () => {
-      const mainPadding = 32;
-      const buttonsHeight = 80;
-      const finalPiecePromptHeight = 120; // Space for the draggable piece prompt
+      const mainPadding = 16; // p-2 on main container (8px each side)
+      const controlsAreaHeight = 120; // Fixed height of the controls div
+      const controlsMarginTop = 8; // mt-2 on controls div
       
       const availableWidth = window.innerWidth - mainPadding;
-      const availableHeight = window.innerHeight - buttonsHeight - finalPiecePromptHeight;
+      const availableHeight = window.innerHeight - mainPadding - controlsAreaHeight - controlsMarginTop;
 
       const aspectRatio = 16 / 9;
       let newWidth, newHeight;
@@ -88,10 +86,32 @@ const App: React.FC = () => {
   }, [createSolvedGrid]);
 
   useEffect(() => {
+    isMounted.current = true;
+    // Preload all audio files to reduce latency and prepare for playback.
+    finalPieceSnapAudioRef.current = new Audio(FINAL_PIECE_SNAP_SOUND_URL);
+    finalPieceSnapAudioRef.current.preload = 'auto';
+
+    puzzleCompletedAudioRef.current = new Audio(PUZZLE_COMPLETED_SOUND_URL);
+    puzzleCompletedAudioRef.current.preload = 'auto';
+    
+    // Cleanup timers on unmount
+    return () => {
+      isMounted.current = false;
+      timersRef.current.forEach(window.clearTimeout);
+    };
+  }, []);
+
+  useEffect(() => {
     if (gameMode === 'completed') {
-      // CompletionEffect animation is ~3.5s. Start countdown after.
+      if (puzzleCompletedAudioRef.current) {
+        puzzleCompletedAudioRef.current.currentTime = 0;
+        puzzleCompletedAudioRef.current.play().catch(e => console.warn("Puzzle completion sound failed to play.", e));
+      }
+      // CompletionEffect animation is ~3.5s. Show play again button after.
       const timer = setTimeout(() => {
-        setShowCountdown(true);
+        if(isMounted.current) {
+          setShowPlayAgain(true);
+        }
       }, 3500); 
 
       return () => clearTimeout(timer);
@@ -100,12 +120,11 @@ const App: React.FC = () => {
 
   const onPuzzleSolved = useCallback(() => {
     setIsSolved(true);
-    setIsAutoShuffling(false);
     setIsBusy(true); // Prevent clicks during transition
     setTimeout(() => {
       setGameMode('finalPiece');
       setIsBusy(false);
-    }, 2000); // 2 second delay
+    }, 1000); // 1 second delay to show solved board before final piece step
   }, []);
 
   const checkSolved = useCallback((currentTiles: Tile[]) => {
@@ -134,31 +153,39 @@ const App: React.FC = () => {
       const newTiles = [...tiles];
       [newTiles[emptyTileIndex], newTiles[clickedTileIndex]] = [newTiles[clickedTileIndex], newTiles[emptyTileIndex]];
       setTiles(newTiles);
-      setShufflePath([]);
       if (checkSolved(newTiles)) {
         onPuzzleSolved();
       }
     }
   }, [tiles, isBusy, isSolved, checkSolved, onPuzzleSolved]);
   
-  const shuffle = useCallback(async () => {
-      setIsBusy(true);
-      if (isSolved) {
-        setShufflePath([]);
-      }
-      setIsSolved(false);
+  const handlePlayAgain = useCallback(async () => {
+    // 0. Reset State
+    timersRef.current.forEach(window.clearTimeout);
+    timersRef.current = [];
+    
+    setGameMode('sliding');
+    setIsFinalPiecePlaced(false);
+    setShowPlayAgain(false);
+    setIsBusy(true);
+    setIsSolved(false);
+    setIsSolving(false);
 
-      let currentTiles = [...tiles];
-      const pathSegment: [number, number][] = [];
-      const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+    // 1. Scatter the puzzle
+    let currentTiles = createSolvedGrid();
+    setTiles(currentTiles);
+    await new Promise(resolve => setTimeout(resolve, 100));
 
-      let emptyIndex = currentTiles.findIndex(t => t.isEmpty);
-      if (emptyIndex === -1) {
-          currentTiles = createSolvedGrid();
-          emptyIndex = EMPTY_TILE_ID;
-      }
-      
-      for (let i = 0; i < SHUFFLE_MOVES_COUNT; i++) {
+    const path: number[] = []; // Stores the index of the empty tile for each move
+    let emptyIndex = EMPTY_TILE_ID;
+    path.push(emptyIndex);
+    
+    const shuffleDuration = 33000; // Increased to 33s as requested
+    const moveInterval = 20; // Reduced from 30ms for faster tile movement
+    const numMoves = Math.floor(shuffleDuration / moveInterval);
+
+    for (let i = 0; i < numMoves; i++) {
+        if (!isMounted.current) return;
         const neighbors: number[] = [];
         const { row, col } = { row: Math.floor(emptyIndex / GRID_SIZE), col: emptyIndex % GRID_SIZE };
 
@@ -167,100 +194,65 @@ const App: React.FC = () => {
         if (col > 0) neighbors.push(emptyIndex - 1);
         if (col < GRID_SIZE - 1) neighbors.push(emptyIndex + 1);
         
-        const randomIndex = Math.floor(Math.random() * neighbors.length);
-        const tileToMoveIndex = neighbors[randomIndex];
+        const lastPos = path.length > 1 ? path[path.length - 2] : -1;
+        const validNeighbors = neighbors.filter(n => n !== lastPos);
+        const moveCandidates = validNeighbors.length > 0 ? validNeighbors : neighbors;
         
-        pathSegment.push([emptyIndex, tileToMoveIndex]);
-
-        [currentTiles[emptyIndex], currentTiles[tileToMoveIndex]] = [currentTiles[tileToMoveIndex], currentTiles[emptyIndex]];
-        emptyIndex = tileToMoveIndex;
+        const moveIndex = moveCandidates[Math.floor(Math.random() * moveCandidates.length)];
+        
+        [currentTiles[emptyIndex], currentTiles[moveIndex]] = [currentTiles[moveIndex], currentTiles[emptyIndex]];
+        emptyIndex = moveIndex;
+        path.push(emptyIndex);
         
         setTiles([...currentTiles]);
-        await sleep(5);
-      }
-      setShufflePath(prev => [...prev, ...pathSegment]);
-      setIsBusy(false);
-  }, [tiles, createSolvedGrid, isSolved]);
-
-  const shuffleRef = useRef(shuffle);
-  useEffect(() => {
-    shuffleRef.current = shuffle;
-  });
-
-  useEffect(() => {
-    if (tiles.length === 0 || !isAutoShuffling) {
-      return;
+        await new Promise(resolve => setTimeout(resolve, moveInterval));
     }
 
-    let timeoutId: number;
-    let isStillAutoShuffling = true;
+    if (!isMounted.current) return;
+    
+    // 2. Wait 3 seconds
+    await new Promise(resolve => setTimeout(resolve, 3000));
 
-    const shuffleLoop = async () => {
-      await shuffleRef.current();
-      if (isStillAutoShuffling) {
-        timeoutId = setTimeout(shuffleLoop, 0);
-      }
-    };
+    if (!isMounted.current) return;
 
-    shuffleLoop();
-
-    return () => {
-      isStillAutoShuffling = false;
-      clearTimeout(timeoutId);
-    };
-  }, [isAutoShuffling, tiles.length]);
-
-  const solve = useCallback(async () => {
-      setIsAutoShuffling(false);
-      
-      if (shufflePath.length === 0) {
-        console.warn("No path to reverse.");
-        return;
-      }
-
-      setIsBusy(true);
-      setIsSolving(true);
-
-      let currentTiles = [...tiles];
-      const reversedPath = [...shufflePath].reverse();
-      const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
-
-      for (const move of reversedPath) {
-          const [index1, index2] = move;
-          [currentTiles[index1], currentTiles[index2]] = [currentTiles[index2], currentTiles[index1]];
-          setTiles([...currentTiles]);
-          await sleep(2);
-      }
-
-      setShufflePath([]);
-      setIsBusy(false);
-      setIsSolving(false);
-      onPuzzleSolved();
-  }, [shufflePath, tiles, onPuzzleSolved]);
-
-  const handlePlayAgain = useCallback(() => {
-    const solvedGrid = createSolvedGrid();
-    setTiles(solvedGrid);
-    setShufflePath([]);
-    setIsSolved(false);
-    setIsAutoShuffling(true);
-    setGameMode('sliding');
-    setIsFinalPiecePlaced(false);
-    setShowCountdown(false);
-    setShowPlayAgain(false);
-    setShowVideo(false);
-  }, [createSolvedGrid]);
-
-  const handleToggleAutoShuffle = () => {
-    if (isSolved) {
-        setShufflePath([]);
+    // 3. Solve the puzzle by reversing the shuffle path
+    setIsSolving(true);
+    const solveMoveInterval = 5; // Solve faster than shuffling
+    for (let i = path.length - 1; i > 0; i--) {
+        if (!isMounted.current) return;
+        const currentEmptyIndex = path[i];
+        const prevEmptyIndex = path[i - 1];
+        
+        [currentTiles[currentEmptyIndex], currentTiles[prevEmptyIndex]] = [currentTiles[prevEmptyIndex], currentTiles[currentEmptyIndex]];
+        
+        setTiles([...currentTiles]);
+        await new Promise(resolve => setTimeout(resolve, solveMoveInterval));
     }
-    setIsAutoShuffling(prev => !prev);
-  }
+
+    if (!isMounted.current) return;
+
+    // 4. Start "Place the final piece" step
+    setIsSolving(false);
+    onPuzzleSolved();
+    
+  }, [createSolvedGrid, onPuzzleSolved]);
+
+
+  useEffect(() => {
+    if (imageLoaded) {
+      handlePlayAgain();
+    }
+  }, [imageLoaded, handlePlayAgain]);
 
   const placeFinalPiece = useCallback(() => {
     setIsDroppable(false);
     setIsFinalPiecePlaced(true);
+
+    if (finalPieceSnapAudioRef.current) {
+      finalPieceSnapAudioRef.current.currentTime = 0;
+      finalPieceSnapAudioRef.current.play().catch(e => console.warn("Final piece snap sound failed to play.", e));
+    }
+
     setTimeout(() => setGameMode('completed'), 1000);
   }, []);
 
@@ -332,21 +324,9 @@ const App: React.FC = () => {
       }
   };
   
-  const handleCountdownComplete = () => {
-    setShowCountdown(false);
-    setShowVideo(true);
-  };
-
-  const handleVideoClose = () => {
-    setShowVideo(false);
-    setShowPlayAgain(true);
-  };
-
   const boardPadding = 16;
   const gridWidth = boardSize.width - boardPadding;
   const gridHeight = boardSize.height - boardPadding;
-  const tileWidth = gridWidth / GRID_SIZE;
-  const tileHeight = gridHeight / GRID_SIZE;
   // dynamic puzzle slot size (relative to board size)
   const dropZoneSize = {
     width:  gridWidth  * 0.2766225583,
@@ -372,7 +352,7 @@ const App: React.FC = () => {
   const isCompleted = gameMode === 'completed';
 
   return (
-    <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center p-4 selection:bg-cyan-500 selection:text-cyan-900 overflow-hidden">
+    <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center p-2 selection:bg-cyan-500 selection:text-cyan-900 overflow-hidden">
       <div 
         className="relative"
         style={{ width: boardSize.width, height: boardSize.height }}
@@ -414,34 +394,12 @@ const App: React.FC = () => {
         )}
         
         {gameMode === 'completed' && <CompletionEffect />}
-        {showCountdown && <Countdown duration={5} onComplete={handleCountdownComplete} />}
       </div>
 
-      <div className="mt-6 flex flex-col justify-center items-center" style={{ height: '120px' }}>
-        {gameMode === 'sliding' && (
-          <div className="flex space-x-4">
-            <button
-              onClick={handleToggleAutoShuffle}
-              disabled={isBusy && !isAutoShuffling}
-              className="flex items-center gap-2 w-40 justify-center px-5 py-3 bg-cyan-600 text-white font-semibold rounded-md shadow-lg hover:bg-cyan-700 disabled:bg-slate-600 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-slate-900 focus:ring-cyan-500 transition-all duration-300"
-            >
-              <ShuffleIcon className="w-5 h-5"/>
-              {isAutoShuffling ? 'Stop Shuffling' : 'Auto-Shuffle'}
-            </button>
-            <button
-              onClick={solve}
-              disabled={isBusy || isSolved || isAutoShuffling || shufflePath.length === 0}
-              className="flex items-center gap-2 w-40 justify-center px-5 py-3 bg-teal-600 text-white font-semibold rounded-md shadow-lg hover:bg-teal-700 disabled:bg-slate-600 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-slate-900 focus:ring-teal-500 transition-all duration-300"
-            >
-              <PuzzleIcon className="w-5 h-5"/>
-              Auto-Solve
-            </button>
-          </div>
-        )}
-
+      <div className="mt-2 flex flex-col justify-center items-center" style={{ height: '120px' }}>
         {gameMode === 'finalPiece' && !isFinalPiecePlaced && (
           <div className="text-center animate-fade-in touch-none" style={{ touchAction: 'none' }}>
-              <p className="mb-4 text-lg text-slate-300">Place the final piece to complete the puzzle.</p>
+              <p className="mb-4 text-lg text-slate-300"> </p>
               <img
                 src={FINAL_PIECE_URL}
                 draggable="true"
@@ -472,7 +430,6 @@ const App: React.FC = () => {
             </div>
         )}
       </div>
-      {showVideo && <VideoPlayer videoId="U4h2JZ_QOMg" onClose={handleVideoClose} />}
     </div>
   );
 };

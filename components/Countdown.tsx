@@ -3,11 +3,36 @@ import React, { useState, useEffect } from 'react';
 interface CountdownProps {
   duration: number;
   onComplete: () => void;
+  audio: HTMLAudioElement | null;
 }
 
-const Countdown: React.FC<CountdownProps> = ({ duration, onComplete }) => {
+const Countdown: React.FC<CountdownProps> = ({ duration, onComplete, audio }) => {
   const [count, setCount] = useState(duration);
 
+  // Effect for playing countdown sound
+  useEffect(() => {
+    if (!audio) return;
+
+    // By calling load(), we reset the media element and tell it to re-fetch the source.
+    // This can help recover from a previous error state (e.g., network issue during preload).
+    audio.load();
+    audio.currentTime = 0; // Ensure it starts from the beginning
+
+    const playPromise = audio.play();
+    if (playPromise !== undefined) {
+      playPromise.catch(error => {
+        // The sound is an important feature, so we log a warning if it fails.
+        console.warn("Countdown audio playback failed.", error);
+      });
+    }
+
+    // Cleanup function to stop the sound if the component unmounts prematurely
+    return () => {
+      audio.pause();
+    };
+  }, [audio]);
+
+  // Effect for the countdown timer logic
   useEffect(() => {
     if (count <= 0) {
       onComplete();

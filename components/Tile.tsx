@@ -33,8 +33,8 @@ const Tile: React.FC<TileProps> = ({ tile, index, onClick, tileWidth, tileHeight
     backgroundImage: isEmpty ? 'none' : `url(${imageUrl})`,
     backgroundSize: `${gridWidth}px ${gridHeight}px`,
     backgroundPosition: `-${bgPosX}px -${bgPosY}px`,
+    // All tile movements, whether by player or auto-solve, should be quick and responsive.
     transition: 'transform 0.1s cubic-bezier(0.4, 0, 0.2, 1)',
-    transitionDelay: isSolving ? `${originalIndex * 20}ms` : '0s',
     backgroundColor: 'transparent'
   };
 
